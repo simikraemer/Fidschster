@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+
+/assets/cards/
+/data/cards.json
+/data/state.json
+
+*.log
+.DS_Store
+Thumbs.db
+/.codex/
+/.agents/

@@ -1,0 +1,146 @@
+[
+  {
+    "id": "card-001",
+    "title": "Beispielkarte 01",
+    "year": 1965,
+    "image": "assets/sample-cards/card-001.svg"
+  },
+  {
+    "id": "card-002",
+    "title": "Beispielkarte 02",
+    "year": 1969,
+    "image": "assets/sample-cards/card-002.svg"
+  },
+  {
+    "id": "card-003",
+    "title": "Beispielkarte 03",
+    "year": 1974,
+    "image": "assets/sample-cards/card-003.svg"
+  },
+  {
+    "id": "card-004",
+    "title": "Beispielkarte 04",
+    "year": 1977,
+    "image": "assets/sample-cards/card-004.svg"
+  },
+  {
+    "id": "card-005",
+    "title": "Beispielkarte 05",
+    "year": 1981,
+    "image": "assets/sample-cards/card-005.svg"
+  },
+  {
+    "id": "card-006",
+    "title": "Beispielkarte 06",
+    "year": 1984,
+    "image": "assets/sample-cards/card-006.svg"
+  },
+  {
+    "id": "card-007",
+    "title": "Beispielkarte 07",
+    "year": 1988,
+    "image": "assets/sample-cards/card-007.svg"
+  },
+  {
+    "id": "card-008",
+    "title": "Beispielkarte 08",
+    "year": 1991,
+    "image": "assets/sample-cards/card-008.svg"
+  },
+  {
+    "id": "card-009",
+    "title": "Beispielkarte 09",
+    "year": 1994,
+    "image": "assets/sample-cards/card-009.svg"
+  },
+  {
+    "id": "card-010",
+    "title": "Beispielkarte 10",
+    "year": 1998,
+    "image": "assets/sample-cards/card-010.svg"
+  },
+  {
+    "id": "card-011",
+    "title": "Beispielkarte 11",
+    "year": 2001,
+    "image": "assets/sample-cards/card-011.svg"
+  },
+  {
+    "id": "card-012",
+    "title": "Beispielkarte 12",
+    "year": 2003,
+    "image": "assets/sample-cards/card-012.svg"
+  },
+  {
+    "id": "card-013",
+    "title": "Beispielkarte 13",
+    "year": 2006,
+    "image": "assets/sample-cards/card-013.svg"
+  },
+  {
+    "id": "card-014",
+    "title": "Beispielkarte 14",
+    "year": 2008,
+    "image": "assets/sample-cards/card-014.svg"
+  },
+  {
+    "id": "card-015",
+    "title": "Beispielkarte 15",
+    "year": 2010,
+    "image": "assets/sample-cards/card-015.svg"
+  },
+  {
+    "id": "card-016",
+    "title": "Beispielkarte 16",
+    "year": 2012,
+    "image": "assets/sample-cards/card-016.svg"
+  },
+  {
+    "id": "card-017",
+    "title": "Beispielkarte 17",
+    "year": 2014,
+    "image": "assets/sample-cards/card-017.svg"
+  },
+  {
+    "id": "card-018",
+    "title": "Beispielkarte 18",
+    "year": 2016,
+    "image": "assets/sample-cards/card-018.svg"
+  },
+  {
+    "id": "card-019",
+    "title": "Beispielkarte 19",
+    "year": 2018,
+    "image": "assets/sample-cards/card-019.svg"
+  },
+  {
+    "id": "card-020",
+    "title": "Beispielkarte 20",
+    "year": 2020,
+    "image": "assets/sample-cards/card-020.svg"
+  },
+  {
+    "id": "card-021",
+    "title": "Beispielkarte 21",
+    "year": 2021,
+    "image": "assets/sample-cards/card-021.svg"
+  },
+  {
+    "id": "card-022",
+    "title": "Beispielkarte 22",
+    "year": 2022,
+    "image": "assets/sample-cards/card-022.svg"
+  },
+  {
+    "id": "card-023",
+    "title": "Beispielkarte 23",
+    "year": 2023,
+    "image": "assets/sample-cards/card-023.svg"
+  },
+  {
+    "id": "card-024",
+    "title": "Beispielkarte 24",
+    "year": 2024,
+    "image": "assets/sample-cards/card-024.svg"
+  }
+]
