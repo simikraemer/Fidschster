@@ -41,7 +41,7 @@ const STATE_FILE = __DIR__ . '/data/state.json';
 const DECK_FILE = __DIR__ . '/data/cards.json';
 
 const PLAYER_COUNT = 3;
-const WIN_CARD_COUNT = 7;
+const WIN_CARD_COUNT = 10;
 const CHALLENGE_SECONDS = 5;
 const TRANSITION_SECONDS = 5;
 
