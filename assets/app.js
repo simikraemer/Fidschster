@@ -295,7 +295,12 @@ function renderActionDock() {
     const seconds = Math.max(0, (state.challengeDeadline || 0) - (state.serverNow || 0));
 
     const canLockPlacement = phase === 'placing' && isActivePlayer && draftPlacement !== null;
-    const canHalt = phase === 'challenge_window' && me !== null && me !== active && (state.players[me]?.tokens ?? 0) > 0;
+    const placementCanBeChallenged = (state.players[active]?.cards?.length ?? 0) > 0;
+    const canHalt = phase === 'challenge_window' &&
+        placementCanBeChallenged &&
+        me !== null &&
+        me !== active &&
+        (state.players[me]?.tokens ?? 0) > 0;
     const canLockChallenge = phase === 'challenger_placing' &&
         isChallenger &&
         challengeDraftPlacement !== null &&

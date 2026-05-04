@@ -1,5 +1,7 @@
 <?php
-session_start();
+require __DIR__ . '/session.php';
+
+start_fidschster_session();
 $isLoggedIn = isset($_SESSION['role']);
 ?><!doctype html>
 <html lang="de">
@@ -93,7 +95,7 @@ document.getElementById('spectatorLogin').addEventListener('click', async () => 
 <div id="turnFlash" class="turn-flash hidden" aria-hidden="true"></div>
 <div id="resultFlash" class="result-flash hidden" aria-live="polite"></div>
 <div id="challengeFlash" class="challenge-flash hidden" aria-live="polite"></div>
-<script src="assets/app.js?v=11"></script>
+<script src="assets/app.js?v=12"></script>
 <?php endif; ?>
 </body>
 </html>

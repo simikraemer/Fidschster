@@ -1,6 +1,8 @@
 <?php
-session_start();
+require __DIR__ . '/session.php';
 require __DIR__ . '/config.php';
+
+start_fidschster_session();
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -319,6 +321,11 @@ function ensure_position(array $state, int $playerIndex, int $position): void
     }
 }
 
+function placement_can_be_challenged(array $state, int $playerIndex): bool
+{
+    return count($state['players'][$playerIndex]['cards'] ?? []) > 0;
+}
+
 function placement_is_correct(array $cardIds, int $position, string $newCardId, array $deck): bool
 {
     if (!isset($deck[$newCardId])) {
@@ -558,7 +565,7 @@ if ($action === 'login') {
 }
 
 if ($action === 'logout') {
-    session_destroy();
+    destroy_fidschster_session();
     json_response(['ok' => true]);
 }
 
@@ -636,6 +643,10 @@ if ($action === 'lock_placement') {
         ];
         $state['lockedAt'] = time();
         $state['challenge'] = null;
+        if (!placement_can_be_challenged($state, $playerIndex)) {
+            resolve_current_round($state);
+            return ['state' => $state, 'changed' => true];
+        }
         $state['phase'] = 'challenge_window';
         return ['state' => $state, 'changed' => true];
     });
@@ -654,6 +665,9 @@ if ($action === 'halt') {
         }
         if ($playerIndex === (int)($state['turn'] ?? 0)) {
             json_response(['ok' => false, 'error' => 'Der aktive Finalist kann seine eigene Platzierung nicht herausfordern.'], 403);
+        }
+        if (!placement_can_be_challenged($state, (int)($state['turn'] ?? 0))) {
+            json_response(['ok' => false, 'error' => 'Diese Platzierung kann nicht herausgefordert werden.'], 400);
         }
         if (time() > (int)($state['lockedAt'] ?? 0) + CHALLENGE_SECONDS) {
             resolve_current_round($state);
