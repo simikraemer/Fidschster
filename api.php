@@ -408,6 +408,49 @@ function winner_by_most_cards(array $state): array
     ];
 }
 
+function player_has_year(array $state, int $playerIndex, int $year, array $deck): bool
+{
+    foreach (($state['players'][$playerIndex]['cards'] ?? []) as $cardId) {
+        $cardId = (string)$cardId;
+        if (isset($deck[$cardId]) && (int)$deck[$cardId]['year'] === $year) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function draw_card_for_player_avoiding_existing_year(array &$state, int $playerIndex, array $deck): ?string
+{
+    $drawPile = array_values($state['drawPile'] ?? []);
+    if ($drawPile === []) {
+        return null;
+    }
+
+    // Suche die erste Karte im Stapel, deren Jahr der aktive Spieler noch nicht besitzt.
+    foreach ($drawPile as $idx => $cardId) {
+        $cardId = (string)$cardId;
+        if (!isset($deck[$cardId])) {
+            continue;
+        }
+
+        $year = (int)$deck[$cardId]['year'];
+        if (!player_has_year($state, $playerIndex, $year, $deck)) {
+            array_splice($drawPile, $idx, 1);
+            $state['drawPile'] = array_values($drawPile);
+            return $cardId;
+        }
+    }
+
+    // Fallback: Wenn nur noch Jahre vorhanden sind, die der Spieler bereits hat,
+    // wird ganz normal die oberste Karte gezogen.
+    $cardId = array_shift($drawPile);
+    $state['drawPile'] = array_values($drawPile);
+
+    return $cardId !== null ? (string)$cardId : null;
+}
+
+// Die bestehende draw_next_card()-Funktion durch diese Version ersetzen.
 function draw_next_card(array &$state): void
 {
     if (empty($state['drawPile'])) {
@@ -423,7 +466,24 @@ function draw_next_card(array &$state): void
         return;
     }
 
-    $state['currentCardId'] = array_shift($state['drawPile']);
+    $deck = load_deck();
+    $playerIndex = (int)($state['turn'] ?? 0);
+    $cardId = draw_card_for_player_avoiding_existing_year($state, $playerIndex, $deck);
+
+    if ($cardId === null) {
+        $winner = winner_by_most_cards($state);
+        $state['phase'] = 'finished';
+        $state['winner'] = array_merge($winner, [
+            'at' => time(),
+            'reason' => 'Deck leer.',
+        ]);
+        $state['currentCardId'] = null;
+        $state['currentPlacement'] = null;
+        $state['challenge'] = null;
+        return;
+    }
+
+    $state['currentCardId'] = $cardId;
     $state['phase'] = 'placing';
     $state['drawnAt'] = time();
     $state['turnStartedAt'] = time();
@@ -513,9 +573,6 @@ function resolve_current_round(array &$state): void
     }
 
     if ($ownerCorrect) {
-        if ($challenger !== null) {
-            add_token_effect($state, $challenger, 1);
-        }
         finish_round($state, $owner, $ownerPos, 'Original-Platzierung korrekt.', $details);
         return;
     }

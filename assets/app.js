@@ -318,7 +318,7 @@ function renderActionDock() {
 
 function renderCenterStage() {
     if (state.phase === 'finished') {
-        centerStage.innerHTML = `<div class="winner-splash"><h2>${esc(state.winner?.name || 'Gewonnen')}</h2><p>${state.winner?.isTie ? 'gewinnen' : 'gewinnt'} das Finale.</p></div>`;
+        centerStage.innerHTML = `<div class="winner-splash"><h2>${esc(state.winner?.name || 'Gewonnen')}</h2><p>gewinnen das Finale.</p></div>`;
         return;
     }
 
