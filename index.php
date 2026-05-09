@@ -9,7 +9,7 @@ $isLoggedIn = isset($_SESSION['role']);
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Finale Frühstücksmeeting</title>
-    <link rel="stylesheet" href="assets/style.css?v=14">
+    <link rel="stylesheet" href="assets/style.css?v=15">
 </head>
 <body>
 <div id="toastHost" aria-live="polite"></div>
@@ -95,7 +95,8 @@ document.getElementById('spectatorLogin').addEventListener('click', async () => 
 <div id="turnFlash" class="turn-flash hidden" aria-hidden="true"></div>
 <div id="resultFlash" class="result-flash hidden" aria-live="polite"></div>
 <div id="challengeFlash" class="challenge-flash hidden" aria-live="polite"></div>
-<script src="assets/app.js?v=12"></script>
+<div id="lockFlash" class="lock-flash hidden" aria-live="polite"></div>
+<script src="assets/app.js?v=15"></script>
 <?php endif; ?>
 </body>
 </html>

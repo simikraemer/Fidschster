@@ -105,7 +105,9 @@ function initial_state(): array
         'drawPile' => $drawPile,
         'discardPile' => [],
         'currentCardId' => null,
+        'currentDraftPlacement' => null,
         'currentPlacement' => null,
+        'placementEvent' => null,
         'challenge' => null,
         'drawnAt' => 0,
         'lockedAt' => 0,
@@ -166,6 +168,12 @@ function migrate_state(array &$state): void
     if (!isset($state['turnStartedAt'])) {
         $state['turnStartedAt'] = 0;
     }
+    if (!array_key_exists('currentDraftPlacement', $state)) {
+        $state['currentDraftPlacement'] = null;
+    }
+    if (!array_key_exists('placementEvent', $state)) {
+        $state['placementEvent'] = null;
+    }
     if (($state['phase'] ?? '') === 'overview' && ($state['gameStarted'] ?? false)) {
         draw_next_card($state);
     }
@@ -184,6 +192,7 @@ function transition_to_next_round(array &$state): void
     $state['nextTurn'] = ((int)($state['turn'] ?? 0) + 1) % PLAYER_COUNT;
     $state['phase'] = 'round_transition';
     $state['transitionUntil'] = time() + TRANSITION_SECONDS;
+    $state['currentDraftPlacement'] = null;
     $state['currentPlacement'] = null;
     $state['challenge'] = null;
     $state['lockedAt'] = 0;
@@ -281,6 +290,15 @@ function export_state(array $state): array
         // Absichtlich für alle Rollen verdeckt. Der Admin teilt seinen Bildschirm im Call.
         $currentCard = public_card($deck, (string)$state['currentCardId'], false);
     }
+    $currentDraftPlacement = null;
+    if (isset($state['currentDraftPlacement']['playerIndex'], $state['currentDraftPlacement']['position'])) {
+        $currentDraftPlacement = [
+            'playerIndex' => (int)$state['currentDraftPlacement']['playerIndex'],
+            'position' => (int)$state['currentDraftPlacement']['position'],
+            'at' => (int)($state['currentDraftPlacement']['at'] ?? 0),
+            'clientId' => (string)($state['currentDraftPlacement']['clientId'] ?? ''),
+        ];
+    }
 
     return [
         'ok' => true,
@@ -299,7 +317,9 @@ function export_state(array $state): array
         'turnStartedAt' => (int)($state['turnStartedAt'] ?? 0),
         'deckRemaining' => count($state['drawPile'] ?? []),
         'currentCard' => $currentCard,
+        'currentDraftPlacement' => $currentDraftPlacement,
         'currentPlacement' => $state['currentPlacement'] ?? null,
+        'placementEvent' => $state['placementEvent'] ?? null,
         'challenge' => $state['challenge'] ?? null,
         'drawnAt' => (int)($state['drawnAt'] ?? 0),
         'lockedAt' => (int)($state['lockedAt'] ?? 0),
@@ -324,6 +344,20 @@ function ensure_position(array $state, int $playerIndex, int $position): void
 function placement_can_be_challenged(array $state, int $playerIndex): bool
 {
     return count($state['players'][$playerIndex]['cards'] ?? []) > 0;
+}
+
+function another_player_has_token(array $state, int $playerIndex): bool
+{
+    foreach (($state['players'] ?? []) as $idx => $player) {
+        if ((int)$idx === $playerIndex) {
+            continue;
+        }
+        if ((int)($player['tokens'] ?? 0) > 0) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function placement_is_correct(array $cardIds, int $position, string $newCardId, array $deck): bool
@@ -461,6 +495,7 @@ function draw_next_card(array &$state): void
             'reason' => 'Deck leer.',
         ]);
         $state['currentCardId'] = null;
+        $state['currentDraftPlacement'] = null;
         $state['currentPlacement'] = null;
         $state['challenge'] = null;
         return;
@@ -478,6 +513,7 @@ function draw_next_card(array &$state): void
             'reason' => 'Deck leer.',
         ]);
         $state['currentCardId'] = null;
+        $state['currentDraftPlacement'] = null;
         $state['currentPlacement'] = null;
         $state['challenge'] = null;
         return;
@@ -488,6 +524,7 @@ function draw_next_card(array &$state): void
     $state['drawnAt'] = time();
     $state['turnStartedAt'] = time();
     $state['roundSeq'] = (int)($state['roundSeq'] ?? 0) + 1;
+    $state['currentDraftPlacement'] = null;
     $state['currentPlacement'] = null;
     $state['challenge'] = null;
     unset($state['nextTurn']);
@@ -522,6 +559,7 @@ function finish_round(array &$state, ?int $winnerIndex, ?int $winnerPosition, st
             'at' => time(),
         ];
         $state['currentCardId'] = null;
+        $state['currentDraftPlacement'] = null;
         $state['currentPlacement'] = null;
         $state['challenge'] = null;
         return;
@@ -677,6 +715,81 @@ if ($action === 'draw_card') {
     json_response(export_state($state));
 }
 
+if ($action === 'set_draft_placement') {
+    $playerIndex = current_player_index();
+    if ($playerIndex === null) {
+        json_response(['ok' => false, 'error' => 'Nur Finalisten dürfen Karten platzieren.'], 403);
+    }
+    $body = request_json();
+    $position = (int)($body['position'] ?? -1);
+    $clientSeq = (int)($body['clientSeq'] ?? 0);
+    $clientId = mb_substr((string)($body['clientId'] ?? ''), 0, 80);
+
+    $state = with_state(function (array $state) use ($playerIndex, $position, $clientSeq, $clientId) {
+        if (($state['phase'] ?? '') !== 'placing') {
+            json_response(['ok' => false, 'error' => 'Aktuell kann keine Platzierung gesetzt werden.'], 400);
+        }
+        if ($playerIndex !== (int)($state['turn'] ?? 0)) {
+            json_response(['ok' => false, 'error' => 'Nur der aktive Finalist darf platzieren.'], 403);
+        }
+        ensure_position($state, $playerIndex, $position);
+        $previousSeq = (int)($state['currentDraftPlacement']['clientSeq'] ?? 0);
+        $previousClientId = (string)($state['currentDraftPlacement']['clientId'] ?? '');
+        if ($clientId !== '' && $clientId === $previousClientId && $clientSeq > 0 && $previousSeq > 0 && $clientSeq < $previousSeq) {
+            return ['state' => $state, 'changed' => false];
+        }
+        $state['currentDraftPlacement'] = [
+            'playerIndex' => $playerIndex,
+            'position' => $position,
+            'at' => time(),
+            'clientSeq' => $clientSeq,
+            'clientId' => $clientId,
+        ];
+        return ['state' => $state, 'changed' => true];
+    });
+    json_response(export_state($state));
+}
+
+if ($action === 'set_challenge_draft_placement') {
+    $playerIndex = current_player_index();
+    if ($playerIndex === null) {
+        json_response(['ok' => false, 'error' => 'Nur Finalisten dürfen Karten platzieren.'], 403);
+    }
+    $body = request_json();
+    $position = (int)($body['position'] ?? -1);
+    $clientSeq = (int)($body['clientSeq'] ?? 0);
+    $clientId = mb_substr((string)($body['clientId'] ?? ''), 0, 80);
+
+    $state = with_state(function (array $state) use ($playerIndex, $position, $clientSeq, $clientId) {
+        if (($state['phase'] ?? '') !== 'challenger_placing') {
+            json_response(['ok' => false, 'error' => 'Aktuell gibt es keine Herausforderer-Platzierung.'], 400);
+        }
+        $challenger = $state['challenge']['by'] ?? null;
+        if ($challenger === null || $playerIndex !== (int)$challenger) {
+            json_response(['ok' => false, 'error' => 'Nur der Herausforderer darf diese Platzierung setzen.'], 403);
+        }
+        $owner = (int)($state['currentPlacement']['playerIndex'] ?? ($state['turn'] ?? 0));
+        ensure_position($state, $owner, $position);
+        if ($position === (int)($state['currentPlacement']['position'] ?? -1)) {
+            json_response(['ok' => false, 'error' => 'Der Herausforderer muss eine andere Position wählen.'], 400);
+        }
+        $previousSeq = (int)($state['challenge']['draftPlacement']['clientSeq'] ?? 0);
+        $previousClientId = (string)($state['challenge']['draftPlacement']['clientId'] ?? '');
+        if ($clientId !== '' && $clientId === $previousClientId && $clientSeq > 0 && $previousSeq > 0 && $clientSeq < $previousSeq) {
+            return ['state' => $state, 'changed' => false];
+        }
+        $state['challenge']['draftPlacement'] = [
+            'playerIndex' => $owner,
+            'position' => $position,
+            'at' => time(),
+            'clientSeq' => $clientSeq,
+            'clientId' => $clientId,
+        ];
+        return ['state' => $state, 'changed' => true];
+    });
+    json_response(export_state($state));
+}
+
 if ($action === 'lock_placement') {
     $playerIndex = current_player_index();
     if ($playerIndex === null) {
@@ -693,14 +806,23 @@ if ($action === 'lock_placement') {
             json_response(['ok' => false, 'error' => 'Nur der aktive Finalist darf einloggen.'], 403);
         }
         ensure_position($state, $playerIndex, $position);
+        $now = time();
         $state['currentPlacement'] = [
             'playerIndex' => $playerIndex,
             'position' => $position,
-            'at' => time(),
+            'at' => $now,
         ];
-        $state['lockedAt'] = time();
+        $state['currentDraftPlacement'] = null;
+        $state['placementEvent'] = [
+            'playerIndex' => $playerIndex,
+            'position' => $position,
+            'cardId' => (string)($state['currentCardId'] ?? ''),
+            'roundSeq' => (int)($state['roundSeq'] ?? 0),
+            'at' => $now,
+        ];
+        $state['lockedAt'] = $now;
         $state['challenge'] = null;
-        if (!placement_can_be_challenged($state, $playerIndex)) {
+        if (!placement_can_be_challenged($state, $playerIndex) || !another_player_has_token($state, $playerIndex)) {
             resolve_current_round($state);
             return ['state' => $state, 'changed' => true];
         }
@@ -742,6 +864,7 @@ if ($action === 'halt') {
             'by' => $playerIndex,
             'at' => time(),
             'placement' => null,
+            'draftPlacement' => null,
         ];
         $state['phase'] = 'challenger_placing';
         return ['state' => $state, 'changed' => true];
@@ -775,6 +898,7 @@ if ($action === 'lock_challenge') {
             'position' => $position,
             'at' => time(),
         ];
+        unset($state['challenge']['draftPlacement']);
         resolve_current_round($state);
         return ['state' => $state, 'changed' => true];
     });

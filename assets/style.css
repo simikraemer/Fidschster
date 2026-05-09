@@ -411,6 +411,12 @@ input:focus { border-color: rgba(143,211,255,.72); box-shadow: 0 0 0 4px rgba(14
     border: 3px solid var(--player-color);
     box-shadow: 0 10px 26px rgba(var(--player-color-rgb), .18);
 }
+.timeline-card.pending.locked {
+    box-shadow:
+        0 10px 26px rgba(var(--player-color-rgb), .22),
+        0 0 0 2px rgba(255,255,255,.88),
+        0 0 28px rgba(var(--player-color-rgb), .55);
+}
 .timeline-card.challenge-pending { border-color: var(--player-color); }
 .timeline-card.draft { cursor: grab; }
 .timeline-card.draft:active { cursor: grabbing; }
@@ -614,6 +620,63 @@ input:focus { border-color: rgba(143,211,255,.72); box-shadow: 0 0 0 4px rgba(14
     12% { opacity: 1; transform: scale(1); }
     72% { opacity: 1; transform: scale(1); }
     100% { opacity: 0; transform: scale(1.02); }
+}
+
+.lock-flash {
+    position: fixed;
+    inset: 0;
+    z-index: 77;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    padding: 1rem;
+}
+.lock-flash > div {
+    width: min(560px, calc(100vw - 2rem));
+    text-align: center;
+    border: 2px solid rgba(255,255,255,.9);
+    border-radius: 24px;
+    background: rgba(10,13,20,.9);
+    box-shadow:
+        0 24px 80px rgba(0,0,0,.58),
+        0 0 42px rgba(var(--player-color-rgb), .45);
+    padding: 1.2rem;
+    overflow: hidden;
+    position: relative;
+}
+.lock-flash > div::after {
+    content: "";
+    position: absolute;
+    inset: -35% -70%;
+    background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,.62) 50%, transparent 60%);
+    transform: translateX(-45%);
+    animation: lockedSweep .85s ease-out;
+}
+.lock-flash span {
+    display: block;
+    color: var(--player-color);
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    font-size: clamp(1.2rem, 4.6vw, 2.6rem);
+    font-weight: 950;
+}
+.lock-flash strong {
+    display: block;
+    margin-top: .35rem;
+    font-size: clamp(1.6rem, 5vw, 3.8rem);
+    line-height: 1;
+}
+.lock-flash.run { animation: lockFlash 1.12s ease-out forwards; }
+@keyframes lockFlash {
+    0% { opacity: 0; transform: scale(.96); }
+    13% { opacity: 1; transform: scale(1); }
+    58% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.03); }
+}
+@keyframes lockedSweep {
+    0% { transform: translateX(-55%); opacity: 0; }
+    18% { opacity: 1; }
+    100% { transform: translateX(55%); opacity: 0; }
 }
 
 @media (max-width: 1050px) {

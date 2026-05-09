@@ -1,5 +1,6 @@
 const POLL_MS = 1000;
 const INTERACTION_GRACE_MS = 450;
+const DRAFT_CLIENT_ID_KEY = 'fidschsterDraftClientId';
 
 const app = document.getElementById('app');
 const scoreRows = document.getElementById('scoreRows');
@@ -12,6 +13,7 @@ const actionDock = document.getElementById('actionDock');
 const turnFlash = document.getElementById('turnFlash');
 const resultFlash = document.getElementById('resultFlash');
 const challengeFlash = document.getElementById('challengeFlash');
+const lockFlash = document.getElementById('lockFlash');
 
 let state = null;
 let draftPlacement = null;
@@ -21,6 +23,7 @@ let lastPhase = null;
 let lastRoundSeq = null;
 let lastResolutionKey = null;
 let lastChallengeKey = null;
+let lastPlacementEventKey = null;
 let draggingCurrent = false;
 let preparingCardDrag = false;
 let inputInProgress = false;
@@ -28,9 +31,12 @@ let refreshInFlight = false;
 let refreshQueued = false;
 let uiQuietUntil = 0;
 let mutationSeq = 0;
+let draftSyncSeq = 0;
+let challengeDraftSyncSeq = 0;
 const seenEffectSeq = new Map();
 const transparentDragImage = new Image();
 transparentDragImage.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+const draftClientId = getDraftClientId();
 
 function esc(value) {
     return String(value ?? '')
@@ -39,6 +45,20 @@ function esc(value) {
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#039;');
+}
+
+function getDraftClientId() {
+    try {
+        let id = sessionStorage.getItem(DRAFT_CLIENT_ID_KEY);
+        if (!id) {
+            const randomPart = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Math.random().toString(36).slice(2);
+            id = `${Date.now().toString(36)}-${randomPart}`;
+            sessionStorage.setItem(DRAFT_CLIENT_ID_KEY, id);
+        }
+        return id;
+    } catch {
+        return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    }
 }
 
 function toast(message, kind = 'normal') {
@@ -114,12 +134,14 @@ function render() {
         draftPlacement = null;
         challengeDraftPlacement = null;
     }
+    reconcileTeamDrafts();
 
     if (state.phase === 'placing' && state.roundSeq && state.roundSeq !== lastRoundSeq) {
         flashTurn(activeName());
     }
     flashChallengeIfNeeded();
     flashResolutionIfNeeded();
+    flashPlacementIfNeeded();
 
     lastCardId = state.currentCard?.id || null;
     lastPhase = state.phase;
@@ -131,6 +153,41 @@ function render() {
     renderActionDock();
     renderCenterStage();
     renderTimelines();
+}
+
+function reconcileTeamDrafts() {
+    if (draggingCurrent || preparingCardDrag) return;
+
+    reconcilePlacementDraft();
+    reconcileChallengeDraft();
+}
+
+function reconcilePlacementDraft() {
+    if (state.phase !== 'placing' || myPlayerIndex() !== state.turn) return;
+
+    const serverDraft = state.currentDraftPlacement;
+    if (serverDraft?.playerIndex === state.turn && serverDraft.position !== undefined && serverDraft.position !== null) {
+        if (draftPlacement === null || serverDraft.clientId !== draftClientId) {
+            draftPlacement = serverDraft.position;
+        }
+        return;
+    }
+
+    draftPlacement = null;
+}
+
+function reconcileChallengeDraft() {
+    if (state.phase !== 'challenger_placing' || myPlayerIndex() !== state.challenge?.by) return;
+
+    const serverDraft = state.challenge?.draftPlacement;
+    if (serverDraft?.playerIndex === state.turn && serverDraft.position !== undefined && serverDraft.position !== null) {
+        if (challengeDraftPlacement === null || serverDraft.clientId !== draftClientId) {
+            challengeDraftPlacement = serverDraft.position;
+        }
+        return;
+    }
+
+    challengeDraftPlacement = null;
 }
 
 function flashTurn(name) {
@@ -192,6 +249,33 @@ function flashResolution(resolution) {
     void resultFlash.offsetWidth;
     resultFlash.classList.add('run');
     setTimeout(() => resultFlash.classList.add('hidden'), 4200);
+}
+
+function flashPlacementIfNeeded() {
+    const event = state.placementEvent;
+    if (!event?.at || event.playerIndex === null || event.playerIndex === undefined) return;
+
+    const key = `${event.roundSeq || ''}:${event.cardId || ''}:${event.playerIndex}:${event.position}:${event.at}`;
+    if (key === lastPlacementEventKey) return;
+
+    const isRecent = Math.abs((state.serverNow || 0) - event.at) <= 4;
+    if (lastPlacementEventKey !== null || isRecent) {
+        flashPlacement(event);
+    }
+    lastPlacementEventKey = key;
+}
+
+function flashPlacement(event) {
+    const player = state.players?.[event.playerIndex];
+    const name = player?.name || `Finalist ${Number(event.playerIndex) + 1}`;
+    lockFlash.innerHTML = `<div class="${playerColorClass(event.playerIndex)}">
+        <span>Eingeloggt</span>
+        <strong>${esc(name)}</strong>
+    </div>`;
+    lockFlash.classList.remove('hidden', 'run');
+    void lockFlash.offsetWidth;
+    lockFlash.classList.add('run');
+    setTimeout(() => lockFlash.classList.add('hidden'), 1200);
 }
 
 function renderRole() {
@@ -294,17 +378,19 @@ function renderActionDock() {
     const isChallenger = me !== null && me === state.challenge?.by;
     const seconds = Math.max(0, (state.challengeDeadline || 0) - (state.serverNow || 0));
 
-    const canLockPlacement = phase === 'placing' && isActivePlayer && draftPlacement !== null;
+    const activeDraftPlacement = currentDraftPosition();
+    const canLockPlacement = phase === 'placing' && isActivePlayer && activeDraftPlacement !== null;
     const placementCanBeChallenged = (state.players[active]?.cards?.length ?? 0) > 0;
     const canHalt = phase === 'challenge_window' &&
         placementCanBeChallenged &&
         me !== null &&
         me !== active &&
         (state.players[me]?.tokens ?? 0) > 0;
+    const activeChallengeDraftPlacement = currentChallengeDraftPosition();
     const canLockChallenge = phase === 'challenger_placing' &&
         isChallenger &&
-        challengeDraftPlacement !== null &&
-        challengeDraftPlacement !== state.currentPlacement?.position;
+        activeChallengeDraftPlacement !== null &&
+        activeChallengeDraftPlacement !== state.currentPlacement?.position;
     const canLockAnyPlacement = canLockPlacement || canLockChallenge;
     const lockAction = canLockChallenge ? 'lock-challenge' : 'lock-placement';
 
@@ -314,6 +400,24 @@ function renderActionDock() {
         <button class="dock-button" data-action="${lockAction}" type="button" ${canLockAnyPlacement ? '' : 'disabled'}>Platzierung einloggen</button>
         <button class="dock-button" data-action="halt" type="button" ${canHalt ? '' : 'disabled'}>${haltText}</button>
     </div>`;
+}
+
+function currentDraftPosition() {
+    if (myPlayerIndex() !== state?.turn) return null;
+    if (draftPlacement !== null) return draftPlacement;
+    if (state.currentDraftPlacement?.playerIndex === state.turn) {
+        return state.currentDraftPlacement.position;
+    }
+    return null;
+}
+
+function currentChallengeDraftPosition() {
+    if (myPlayerIndex() !== state?.challenge?.by) return null;
+    if (challengeDraftPlacement !== null) return challengeDraftPlacement;
+    if (state.challenge?.draftPlacement?.playerIndex === state.turn) {
+        return state.challenge.draftPlacement.position;
+    }
+    return null;
 }
 
 function renderCenterStage() {
@@ -340,16 +444,26 @@ function renderCenterStage() {
 function pendingForPlayer(playerIndex) {
     const pending = [];
     if (state.currentPlacement?.playerIndex === playerIndex && ['challenge_window', 'challenger_placing', 'resolving'].includes(state.phase)) {
-        pending.push({position: state.currentPlacement.position, className: `pending ${playerColorClass(playerIndex)}`, label: 'Eingeloggt', draggable: false});
+        pending.push({position: state.currentPlacement.position, className: `pending locked ${playerColorClass(playerIndex)}`, label: 'Eingeloggt', draggable: false});
     }
     if (state.challenge?.placement?.playerIndex === playerIndex && ['resolving'].includes(state.phase)) {
         pending.push({position: state.challenge.placement.position, className: `pending challenge-pending ${playerColorClass(state.challenge.by)}`, label: 'Herausforderung', draggable: false});
     }
-    if (playerIndex === state.turn && state.phase === 'placing' && myPlayerIndex() === state.turn && draftPlacement !== null) {
-        pending.push({position: draftPlacement, className: `pending draft ${playerColorClass(playerIndex)}`, label: 'Probe', draggable: true});
+    if (playerIndex === state.turn && state.phase === 'placing') {
+        const serverDraft = state.currentDraftPlacement?.playerIndex === playerIndex ? state.currentDraftPlacement.position : null;
+        const localDraft = myPlayerIndex() === state.turn && (draggingCurrent || preparingCardDrag || draftPlacement !== null) ? draftPlacement : null;
+        const position = localDraft ?? serverDraft;
+        if (position !== null && position !== undefined) {
+            pending.push({position, className: `pending draft ${playerColorClass(playerIndex)}`, label: 'Probe', draggable: myPlayerIndex() === state.turn});
+        }
     }
-    if (playerIndex === state.turn && state.phase === 'challenger_placing' && myPlayerIndex() === state.challenge?.by && challengeDraftPlacement !== null) {
-        pending.push({position: challengeDraftPlacement, className: `pending challenge-pending draft ${playerColorClass(state.challenge.by)}`, label: 'Probe', draggable: true});
+    if (playerIndex === state.turn && state.phase === 'challenger_placing') {
+        const serverDraft = state.challenge?.draftPlacement?.playerIndex === playerIndex ? state.challenge.draftPlacement.position : null;
+        const localDraft = myPlayerIndex() === state.challenge?.by && (draggingCurrent || preparingCardDrag || challengeDraftPlacement !== null) ? challengeDraftPlacement : null;
+        const position = localDraft ?? serverDraft;
+        if (position !== null && position !== undefined) {
+            pending.push({position, className: `pending challenge-pending draft ${playerColorClass(state.challenge.by)}`, label: 'Probe', draggable: myPlayerIndex() === state.challenge?.by});
+        }
     }
     return pending;
 }
@@ -425,6 +539,7 @@ function selectSlot(playerIndex, position) {
         draftPlacement = position;
         renderActionDock();
         renderTimelines();
+        syncDraftPlacement(position);
         return;
     }
     if (state.phase === 'challenger_placing' && myPlayerIndex() === state.challenge?.by && playerIndex === state.turn) {
@@ -432,6 +547,39 @@ function selectSlot(playerIndex, position) {
         challengeDraftPlacement = position;
         renderActionDock();
         renderTimelines();
+        syncChallengeDraftPlacement(position);
+    }
+}
+
+async function syncDraftPlacement(position) {
+    const syncId = ++draftSyncSeq;
+    try {
+        const clientSeq = Date.now() * 1000 + syncId;
+        const nextState = await api('set_draft_placement', {position, clientSeq, clientId: draftClientId});
+        if (syncId === draftSyncSeq && !draggingCurrent && !preparingCardDrag) {
+            state = nextState;
+            render();
+        }
+    } catch (e) {
+        if (syncId === draftSyncSeq) {
+            toast(e.message, 'error');
+        }
+    }
+}
+
+async function syncChallengeDraftPlacement(position) {
+    const syncId = ++challengeDraftSyncSeq;
+    try {
+        const clientSeq = Date.now() * 1000 + syncId;
+        const nextState = await api('set_challenge_draft_placement', {position, clientSeq, clientId: draftClientId});
+        if (syncId === challengeDraftSyncSeq && !draggingCurrent && !preparingCardDrag) {
+            state = nextState;
+            render();
+        }
+    } catch (e) {
+        if (syncId === challengeDraftSyncSeq) {
+            toast(e.message, 'error');
+        }
     }
 }
 
@@ -520,11 +668,13 @@ document.addEventListener('click', async (event) => {
         } else if (action === 'reset-game') {
             if (confirm('Spiel wirklich zurücksetzen?')) await runAction('reset_game');
         } else if (action === 'lock-placement') {
-            if (draftPlacement !== null) await runAction('lock_placement', {position: draftPlacement});
+            const position = currentDraftPosition();
+            if (position !== null) await runAction('lock_placement', {position});
         } else if (action === 'halt') {
             await runAction('halt');
         } else if (action === 'lock-challenge') {
-            if (challengeDraftPlacement !== null) await runAction('lock_challenge', {position: challengeDraftPlacement});
+            const position = currentChallengeDraftPosition();
+            if (position !== null) await runAction('lock_challenge', {position});
         } else if (action === 'add-token' || action === 'remove-token') {
             await runAction(action === 'add-token' ? 'add_token' : 'remove_token', {playerIndex: Number(button.dataset.player)});
         } else if (action === 'resolve') {
